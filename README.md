@@ -27,7 +27,9 @@ Nesta versão inicial, o sistema já apresenta:
 * ⚡ Sistema de energia
 * 🔄 Comportamento emergente básico
 
+## 🔥 Diferencial
 
+Este projeto vai além de scripts tradicionais, simulando um organismo digital com comportamento emergente, inspirado em conceitos de IA e sistemas adaptativos.
 
 ## 🏗️ Arquitetura do Sistema
 
