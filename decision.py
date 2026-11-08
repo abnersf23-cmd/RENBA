@@ -46,14 +46,17 @@ class DecisionEngine:
         self.probabilidades:   dict  = {a: 0.2 for a in ACOES}  # visível no debug
         self.tempo_na_acao:    float = 0.0
         self.duracao_acao:     float = 2.0
+        self.decidiu:          bool  = False
 
     def update(self, dt: float, estado, time_engine,
                circadian=None, humor=None) -> str:
         """Avança o motor. Reavalia a ação quando o tempo se esgota."""
         self.tempo_na_acao += dt
+        self.decidiu        = False  # True só no frame em que houve nova decisão
 
         frequencia = 1.5 + time_engine.fator_aleatoriedade * 3.0
         if self.tempo_na_acao >= (self.duracao_acao / frequencia):
+            self.decidiu       = True
             self.acao_atual    = self._escolher(estado, time_engine,
                                                 circadian, humor)
             self.tempo_na_acao = 0.0
@@ -153,14 +156,16 @@ class DecisionEngine:
             # Move o valor 0.05% em direção ao neutro
             self.tendencias[acao] = atual + (neutro - atual) * (1.0 - self.DECAIMENTO)
 
-    def reforcar(self, acao: str, resultado: float):
+    def reforcar(self, acao: str, resultado: float, dt: float = 1.0):
         """
         Ajusta o peso de uma ação com base no resultado observado.
         resultado: +1.0 (funcionou bem) → -1.0 (não funcionou)
+        dt: escala o ajuste pelo tempo, para que chamar a cada frame
+            não sature as tendências em poucos segundos (0.05 por segundo).
         """
         if acao not in self.tendencias:
             return
-        ajuste = resultado * 0.05
+        ajuste = resultado * 0.05 * dt
         self.tendencias[acao] = max(
             self.PESO_MIN,
             min(self.PESO_MAX, self.tendencias[acao] + ajuste)

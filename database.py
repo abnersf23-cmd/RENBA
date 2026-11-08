@@ -1,5 +1,5 @@
 """
-database.py — RENBA v0.4
+database.py — RENBA v0.7
 -------------------------
 Responsável por toda a persistência do RENBA entre sessões.
 
@@ -22,13 +22,15 @@ Responsabilidades desta classe:
     - Proteger contra perda de dados em fechamento inesperado
 """
 
+import json
 import sqlite3
 import time
 import math
 import os
 
-# Nome do arquivo do banco — na mesma pasta do projeto
-CAMINHO_DB = "renba.db"
+# Arquivo do banco — sempre na pasta do projeto, independente do diretório
+# de onde o programa for executado
+CAMINHO_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "renba.db")
 
 # Salva automaticamente a cada N ciclos de decisão
 SALVAR_A_CADA_CICLOS = 30
@@ -82,6 +84,10 @@ class DatabaseManager:
                     -- Tendências de decisão (DecisionEngine) — JSON simples
                     tendencias      TEXT DEFAULT '{}',
 
+                    -- Humor (Mood) — v0.7
+                    humor_base      REAL,
+                    humor_imediato  REAL,
+
                     -- Controle de sessão
                     last_update     REAL DEFAULT 0.0,
                     total_sessoes   INTEGER DEFAULT 0
@@ -98,13 +104,34 @@ class DatabaseManager:
                     evento      TEXT,
                     detalhe     TEXT
                 );
+
+                CREATE INDEX IF NOT EXISTS idx_log_evento_ts
+                    ON log (evento, timestamp);
             """)
 
+            # Migração: bancos criados antes da v0.7 não têm colunas de humor
+            colunas = {r["name"] for r in conn.execute("PRAGMA table_info(state)")}
+            for coluna in ("humor_base", "humor_imediato"):
+                if coluna not in colunas:
+                    conn.execute(f"ALTER TABLE state ADD COLUMN {coluna} REAL")
+
     def _conectar(self) -> sqlite3.Connection:
-        """Retorna uma conexão com o banco. Cria o arquivo se necessário."""
-        conn = sqlite3.connect(self.caminho)
-        conn.row_factory = sqlite3.Row  # acesso por nome de coluna
-        return conn
+        """
+        Retorna a conexão reutilizável com o banco (cria o arquivo se necessário).
+
+        Usar `with self._conectar() as conn:` faz commit/rollback da transação,
+        mas NÃO fecha a conexão — por isso ela é única e fechada em fechar().
+        """
+        if self._conexao is None:
+            self._conexao = sqlite3.connect(self.caminho)
+            self._conexao.row_factory = sqlite3.Row  # acesso por nome de coluna
+        return self._conexao
+
+    def fechar(self):
+        """Fecha a conexão com o banco. Chamado ao encerrar."""
+        if self._conexao is not None:
+            self._conexao.close()
+            self._conexao = None
 
     # ------------------------------------------------------------------ #
     #  Verificação de existência                                           #
@@ -126,13 +153,12 @@ class DatabaseManager:
         Chamado periodicamente e sempre ao encerrar.
         Usa INSERT OR REPLACE para garantir apenas 1 linha (id=1).
         """
-        import json
-
         e  = renba.estado
         p  = renba.personalidade
         t  = renba.tempo
         d  = renba.decisao
         mem = renba.memoria
+        h   = renba.humor
 
         tendencias_json = json.dumps(d.tendencias)
 
@@ -142,18 +168,20 @@ class DatabaseManager:
                 INSERT OR REPLACE INTO state (
                     id, energia, curiosidade, estabilidade, isolamento,
                     impulso, variacao, ritmo, p_estabilidade,
-                    tempo_vida, tendencias, last_update, total_sessoes
+                    tempo_vida, tendencias, humor_base, humor_imediato,
+                    last_update, total_sessoes
                 ) VALUES (
                     1, ?, ?, ?, ?,
                     ?, ?, ?, ?,
-                    ?, ?, ?, COALESCE(
+                    ?, ?, ?, ?, ?, COALESCE(
                         (SELECT total_sessoes FROM state WHERE id=1), 0
                     )
                 )
             """, (
                 e.energia, e.curiosidade, e.estabilidade, e.isolamento,
                 p.impulso, p.variacao, p.ritmo, p.estabilidade,
-                t.tempo_vida, tendencias_json, time.time()
+                t.tempo_vida, tendencias_json, h.humor_base, h.humor_imediato,
+                time.time()
             ))
 
             # Salva memória de frequências
@@ -200,8 +228,6 @@ class DatabaseManager:
         Carrega o estado salvo do banco.
         Retorna um dicionário com todos os dados ou None se não houver.
         """
-        import json
-
         with self._conectar() as conn:
             row = conn.execute("SELECT * FROM state WHERE id = 1").fetchone()
             if not row:
@@ -227,6 +253,9 @@ class DatabaseManager:
                 "tempo_vida":     row["tempo_vida"],
                 # Decisão
                 "tendencias":     tendencias,
+                # Humor (None em bancos antigos)
+                "humor_base":     row["humor_base"],
+                "humor_imediato": row["humor_imediato"],
                 # Memória
                 "frequencia":     frequencia,
                 # Sessão

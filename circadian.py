@@ -24,9 +24,13 @@ class CircadianRhythm:
         estabilidade alta → segue o ciclo rigidamente
     """
 
+    # Margem (em horas) ao redor das trocas de fase antes de aceitar a troca
+    HISTERESE_HORAS = 0.1  # 6 minutos
+
     def __init__(self):
         self.hora_atual     = 0.0   # 0.0 → 24.0
         self.fase_dia       = "madrugada"
+        self._fase_definida = False
         self.fator_atividade = 0.0  # 0.0 (dormindo) → 1.0 (pico)
 
         # Influências individuais nos drives (-1.0 → +1.0)
@@ -54,16 +58,23 @@ class CircadianRhythm:
         # Pico às 15h, vale às 3h
         self.fator_atividade = self._curva_atividade(hora_efetiva, personalidade)
 
-        # Determina fase do dia
+        # Determina fase do dia — com histerese: o deslocamento acompanha o
+        # impulso, que oscila a cada frame; sem isso, perto de 0h/6h/12h/18h
+        # a fase piscava entre duas e o diário era inundado de "nova fase"
         h = hora_efetiva
         if h < 6.0:
-            self.fase_dia = "madrugada"
+            nova_fase = "madrugada"
         elif h < 12.0:
-            self.fase_dia = "manha"
+            nova_fase = "manha"
         elif h < 18.0:
-            self.fase_dia = "tarde"
+            nova_fase = "tarde"
         else:
-            self.fase_dia = "noite"
+            nova_fase = "noite"
+
+        distancia_fronteira = min(abs(h - f) for f in (0.0, 6.0, 12.0, 18.0, 24.0))
+        if not self._fase_definida or distancia_fronteira > self.HISTERESE_HORAS:
+            self.fase_dia       = nova_fase
+            self._fase_definida = True
 
         # Calcula influências por drive
         self._calcular_influencias(hora_efetiva, personalidade)

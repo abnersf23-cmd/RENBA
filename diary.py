@@ -72,6 +72,10 @@ class Diary:
 
     def ao_acordar(self, renba):
         """Chamado no início de cada sessão."""
+        # Parte do humor real (pode vir restaurado do banco), senão a
+        # primeira frame já detectaria uma "mudança brusca" falsa
+        self._humor_snapshot = renba.humor.humor_total
+        self._ultimo_humor   = self._humor_snapshot
         self._escrever(renba, motivo="acordar")
         self._ultima_fase = renba.circadian.fase_dia
 

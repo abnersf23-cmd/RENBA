@@ -44,14 +44,49 @@ O projeto é modularizado para simular componentes cognitivos:
 * `world.py` → ambiente
 * `time_engine.py` → tempo
 * `circadian.py` → ciclo biológico
+* `personality.py` → personalidade
+* `internal_state.py` → drives internos (energia, curiosidade...)
+* `interaction.py` → interação com o mouse
+* `body.py` → forma e cor (reflete o humor)
+* `diary.py` → diário em primeira pessoa
+* `database.py` → persistência SQLite e efeitos do tempo offline
 
 
 
 ## ▶️ Como executar
 
+Requer Python 3.10+.
+
 ```bash
+pip install -r requirements.txt
 python main.py
 ```
+
+Opções:
+
+| Opção | Efeito |
+|---|---|
+| `--acelerar N` | multiplica o tempo de vida (`3600` → 1 hora real = 1 dia de vida) |
+| `--db CAMINHO` | usa outro arquivo de banco (teste sem afetar o RENBA principal) |
+
+Teste rápido sem mexer no RENBA principal:
+
+```bash
+python main.py --acelerar 3600 --db teste.db
+```
+
+O estado fica em `renba.db` (tabelas `state`, `memory` e `log`). Apagar esse
+arquivo faz um RENBA novo nascer.
+
+## 🕹️ Controles
+
+| Entrada | Efeito |
+|---|---|
+| Clique esquerdo perto dele | carinho: humor e curiosidade sobem |
+| Clique direito perto dele | susto: humor cai |
+| Cursor por perto | ele percebe, desacelera e foge se você encostar |
+| `H` | esconde/mostra o HUD |
+| `ESC` | encerra, escreve no diário e salva |
 
 
 
@@ -63,7 +98,7 @@ Explorar na prática conceitos de Inteligência Artificial e sistemas adaptativo
 
 ## 🚀 Próximas evoluções
 
-* Persistência mais robusta (SQLite)
+* Ciclo de vida completo (o que acontece após os 30 dias)
 * Aprendizado adaptativo
 * Interface mais avançada
 * Expansão da interação

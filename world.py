@@ -4,6 +4,7 @@ class World:
     """
     Gerencia a janela, o fundo e a interface de exibição.
     v0.6: captura mouse, exibe diário e indicador de interação.
+    v0.7: tecla H alterna o HUD.
     """
 
     LARGURA   = 1280
@@ -14,9 +15,10 @@ class World:
     def __init__(self):
         pygame.init()
         self.surface = pygame.display.set_mode((self.LARGURA, self.ALTURA))
-        pygame.display.set_caption("RENBA v0.6")
+        pygame.display.set_caption("RENBA v0.7")
         self.clock   = pygame.time.Clock()
         self.rodando = True
+        self.mostrar_hud = True
 
         self.fonte      = pygame.font.SysFont("monospace", 13)
         self.fonte_diario = pygame.font.SysFont("monospace", 12)
@@ -42,6 +44,8 @@ class World:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.rodando = False
+                elif event.key == pygame.K_h:
+                    self.mostrar_hud = not self.mostrar_hud
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     self.clique_esq = True
@@ -305,7 +309,7 @@ class World:
         ry = int(renba.y) - raio_vis
         self.surface.blit(surf, (rx, ry))
 
-        # Dica de interação (só se nunca tocou ainda)
+        # Dica de interação
         cor_dica = (120, 100, 180)
         desc = inter.descricao_presenca
         lbl  = self.fonte.render(

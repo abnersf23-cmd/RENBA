@@ -19,7 +19,7 @@ class RENBA:
     v0.6: interação com mouse, cor reflete humor, diário de vida.
     """
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, aceleracao: float = 1.0, caminho_db: str = None):
         self.x = float(x)
         self.y = float(y)
 
@@ -28,7 +28,8 @@ class RENBA:
 
         self.corpo     = Body()
         self.percepcao = Perception()
-        self.db        = DatabaseManager()
+        self.db        = DatabaseManager(caminho_db) if caminho_db else DatabaseManager()
+        self.aceleracao = aceleracao
 
         dados = self.db.carregar() if self.db.existe_estado_salvo() else None
 
@@ -40,7 +41,9 @@ class RENBA:
         else:
             self._inicializar_novo()
 
-        # Diário precisa do db já configurado
+        # Diário precisa do db já configurado e do relógio circadiano
+        # atualizado (senão a primeira entrada diz "acordo às 00:00")
+        self.circadian.update(self.personalidade)
         self.diario = Diary(self.db)
         self.diario.ao_acordar(self)
 
@@ -49,7 +52,7 @@ class RENBA:
         self.estado        = InternalState()
         self.decisao       = DecisionEngine()
         self.memoria       = Memory()
-        self.tempo         = TimeEngine(aceleracao=1.0)
+        self.tempo         = TimeEngine(aceleracao=self.aceleracao)
         self.circadian     = CircadianRhythm()
         self.humor         = Mood()
 
@@ -75,7 +78,7 @@ class RENBA:
         self.estado.estabilidade = dados["estabilidade"]
         self.estado.isolamento   = dados["isolamento"]
 
-        self.tempo            = TimeEngine(aceleracao=1.0)
+        self.tempo            = TimeEngine(aceleracao=self.aceleracao)
         self.tempo.tempo_vida = dados["tempo_vida"]
 
         segundos_offline = self.db.calcular_tempo_offline(dados["last_update"])
@@ -91,6 +94,9 @@ class RENBA:
         self.memoria.frequencia = dados["frequencia"]
         self.circadian          = CircadianRhythm()
         self.humor              = Mood()
+        if dados.get("humor_base") is not None:
+            self.humor.humor_base     = dados["humor_base"]
+            self.humor.humor_imediato = dados["humor_imediato"]
 
         horas_offline = segundos_offline / 3600.0
 
@@ -155,7 +161,7 @@ class RENBA:
 
         # 6. Percepção
         self.percepcao.update(self.x, self.y, largura, altura)
-        self.personalidade.aplicar_percepcao(self.percepcao)
+        self.personalidade.aplicar_percepcao(self.percepcao, dt)
 
         # 7. Decisão
         acao_anterior = self.decisao.acao_atual
@@ -178,16 +184,17 @@ class RENBA:
         # 8. Estado interno
         self.estado.update(dt, acao, self.tempo)
 
-        # 9. Reforço
+        # 9. Reforço (escalado por dt — antes saturava em segundos)
         resultado = self._avaliar_resultado(acao)
-        self.decisao.reforcar(acao, resultado)
+        self.decisao.reforcar(acao, resultado, dt)
 
-        # 10. Memória
-        snapshot = self.memoria.snapshot_estado(self.estado)
-        self.memoria.registrar(acao, snapshot)
+        # 10. Memória — registra por ciclo de decisão, não por frame
+        if self.decisao.decidiu:
+            snapshot = self.memoria.snapshot_estado(self.estado)
+            self.memoria.registrar(acao, snapshot)
 
         # 11. Ação influencia personalidade
-        self._aplicar_acao_na_personalidade(acao)
+        self._aplicar_acao_na_personalidade(acao, dt)
 
         # 12. v0.6 — Diário
         self.diario.update(self)
@@ -234,15 +241,12 @@ class RENBA:
             )
 
         # v0.6: cursor muito próximo faz o RENBA girar em direção oposta
-        if self.interacao.em_contato:
-            import math as _math
-            dx = self.x - (mouse_pos[0] if mouse_pos else self.x)
-            dy = self.y - (mouse_pos[1] if mouse_pos else self.y)
-            angulo_fuga = _math.atan2(dy, dx)
-            diff = angulo_fuga - self.angulo
-            while diff >  _math.pi: diff -= 2 * _math.pi
-            while diff < -_math.pi: diff += 2 * _math.pi
-            self.angulo += diff * 0.05
+        if self.interacao.em_contato and mouse_pos is not None:
+            dx = self.x - mouse_pos[0]
+            dy = self.y - mouse_pos[1]
+            angulo_fuga = math.atan2(dy, dx)
+            diff = (angulo_fuga - self.angulo + math.pi) % (2 * math.pi) - math.pi
+            self.angulo += diff * min(1.0, 3.0 * dt)
         else:
             self.angulo += random.uniform(-amplitude_angular, amplitude_angular)
 
@@ -277,6 +281,7 @@ class RENBA:
         self.diario.ao_dormir(self)
         self.db.salvar(self)
         self.db.registrar_encerramento()
+        self.db.fechar()
 
     # ------------------------------------------------------------------ #
     #  Auxiliares                                                          #
@@ -296,9 +301,11 @@ class RENBA:
             return 0.1
         return 0.0
 
-    def _aplicar_acao_na_personalidade(self, acao: str):
+    def _aplicar_acao_na_personalidade(self, acao: str, dt: float):
+        # Escalado por dt: antes era por frame e saturava a personalidade
+        # (impulso/estabilidade iam a 1.0 em poucos segundos).
         p   = self.personalidade
-        ftr = self.tempo.fator_aprendizado * 0.008
+        ftr = self.tempo.fator_aprendizado * 0.01 * dt
 
         if acao == "explorar":
             p.impulso  = min(1.0, p.impulso  + ftr)

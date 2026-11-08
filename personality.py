@@ -28,7 +28,7 @@ class Personality:
         self.variacao     = self._variar(self.variacao,     fator * 0.6)
         self.ritmo        = self._variar(self.ritmo,        fator * 0.5)
 
-    def aplicar_percepcao(self, perception):
+    def aplicar_percepcao(self, perception, dt: float = 1.0 / 60.0):
         """
         Recebe os dados de percepção e aplica influência suave
         nas variáveis internas. — v0.2
@@ -44,8 +44,9 @@ class Personality:
         """
         p = perception.proximidade_geral
 
-        # Intensidade do efeito: pequena e gradual
-        efeito = p * 0.004 * (1.0 - self.estabilidade) # mais efeito se estiver menos estável
+        # Intensidade do efeito: pequena e gradual, escalada por dt
+        # (antes era por frame e corroía a estabilidade em poucos minutos)
+        efeito = p * 0.01 * dt * (1.0 - self.estabilidade) # mais efeito se estiver menos estável
 
         # Proximidade aumenta a variação (comportamento mais errático)
         self.variacao     = min(1.0, self.variacao     + efeito)
